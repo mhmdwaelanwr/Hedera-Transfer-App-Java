@@ -112,6 +112,20 @@ public class SettingsActivity extends AppCompatActivity {
         changeExportLocationButton = findViewById(R.id.change_export_location_button);
         exportFormatRadioGroup = findViewById(R.id.export_format_radiogroup);
         exportProgressBar = findViewById(R.id.export_progress_bar);
+        
+        // Features buttons
+        Button addressBookButton = findViewById(R.id.address_book_button);
+        Button priceAlertsButton = findViewById(R.id.price_alerts_button);
+        
+        addressBookButton.setOnClickListener(v -> {
+            VibrationManager.vibrate(this);
+            startActivity(new Intent(this, AddressBookActivity.class));
+        });
+        
+        priceAlertsButton.setOnClickListener(v -> {
+            VibrationManager.vibrate(this);
+            startActivity(new Intent(this, PriceAlertsActivity.class));
+        });
     }
 
     private void setupToolbar() {

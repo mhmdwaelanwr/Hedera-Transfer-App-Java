@@ -247,6 +247,49 @@
             </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:hapticFeedbackEnabled="true"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="4dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        style="?attr/textAppearanceHeadline6"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="@font/segoe_ui_semibold"
+                        android:text="Features" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/address_book_button"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:fontFamily="@font/segoe_ui_semibold"
+                        android:hapticFeedbackEnabled="true"
+                        android:text="Saved Addresses" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/price_alerts_button"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:fontFamily="@font/segoe_ui_semibold"
+                        android:hapticFeedbackEnabled="true"
+                        android:text="Price Alerts" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
                 android:id="@+id/source_code_card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

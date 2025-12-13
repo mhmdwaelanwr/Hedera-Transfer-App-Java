@@ -28,6 +28,7 @@ import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Executor;
 
@@ -48,6 +49,7 @@ public class IdpayActivity extends AppCompatActivity {
 
     private IdpayViewModel viewModel;
     private double currentBalance = 0.0;
+    private double exchangeRate = 0.0;
 
     private Executor executor;
     private BiometricPrompt biometricPrompt;
@@ -202,9 +204,26 @@ public class IdpayActivity extends AppCompatActivity {
 
         viewModel.getExchangeRate().observe(this, rate -> {
             if (rate != null) {
-                exchangeRateTextView.setText(rate);
+                try {
+                    String[] parts = rate.split("=");
+                    if (parts.length > 1) {
+                        String rateValueString = parts[1].replace("$", "").trim();
+                        exchangeRate = Double.parseDouble(rateValueString);
+                        updateBalanceInUSD();
+                    }
+                } catch (NumberFormatException e) {
+                    exchangeRateTextView.setText(rate);
+                }
             }
         });
+    }
+
+    private void updateBalanceInUSD() {
+        if (exchangeRate > 0) {
+            double balanceInUSD = currentBalance * exchangeRate;
+            String formattedBalanceInUSD = String.format(Locale.US, "$%,.2f", balanceInUSD);
+            exchangeRateTextView.setText(formattedBalanceInUSD);
+        }
     }
 
     private void loadInitialData() {

@@ -45,6 +45,8 @@ public class TransferActivity extends AppCompatActivity {
     private HistoryAdapter historyAdapter;
     private BlogAdapter blogAdapter;
 
+    private double exchangeRate = 0.0;
+
     private static final String HEDERA_API_BASE_URL = "https://testnet.mirrornode.hedera.com";
     private static final String HISTORY_API_ENDPOINT = "/api/v1/transactions";
     private static final String BLOG_API_URL = "https://mlsaegypt.org/api/blog";
@@ -294,6 +296,7 @@ public class TransferActivity extends AppCompatActivity {
                 WalletStorage.saveFormattedBalance(this, (String) map.get("hbars"));
                 binding.balanceTextView.setText((String) map.get("hbars"));
                 updateBalanceCard();
+                updateBalanceInUSD(); // Call this to update the USD balance
                 loadBlogPosts();
             } else {
                 Log.e("BalanceAPI", "API Error: Response does not contain expected keys.");
@@ -310,14 +313,22 @@ public class TransferActivity extends AppCompatActivity {
                 int cents = rateResponse.current_rate.cent_equivalent;
                 int hbars = rateResponse.current_rate.hbar_equivalent;
                 if (hbars > 0) {
-                    double rate = (double) cents / hbars;
-                    String rateText = String.format(Locale.US, "1 HBAR = $%.4f", rate);
-                    binding.exchangeRateTextView.setText(rateText);
+                    exchangeRate = (double) cents / hbars / 100; // Convert cents to dollars
+                    updateBalanceInUSD();
                 }
             }
         } catch (JsonSyntaxException e) {
             Log.e("ExchangeRateAPI_CRASH", "Could not parse exchange rate response", e);
             binding.exchangeRateTextView.setText("Invalid rate data");
+        }
+    }
+
+    private void updateBalanceInUSD() {
+        double balance = WalletStorage.getRawBalance(this);
+        if (exchangeRate > 0) {
+            double balanceInUSD = balance * exchangeRate;
+            String formattedBalanceInUSD = String.format(Locale.US, "$%,.2f", balanceInUSD);
+            binding.exchangeRateTextView.setText(formattedBalanceInUSD);
         }
     }
 

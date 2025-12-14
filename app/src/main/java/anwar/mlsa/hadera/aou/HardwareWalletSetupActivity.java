@@ -34,6 +34,7 @@ public class HardwareWalletSetupActivity extends AppCompatActivity implements Ha
 
     private Button scanButton;
     private ProgressBar progressBar;
+    private View instructionsView;
     private TextView instructionsText;
     private RecyclerView recyclerView;
     private HwAccountAdapter adapter;
@@ -77,6 +78,7 @@ public class HardwareWalletSetupActivity extends AppCompatActivity implements Ha
     private void initializeViews() {
         scanButton = findViewById(R.id.scan_accounts_button);
         progressBar = findViewById(R.id.setup_progress_bar);
+        instructionsView = findViewById(R.id.hw_instructions_view);
         instructionsText = findViewById(R.id.hw_instructions_text);
         recyclerView = findViewById(R.id.hw_accounts_recyclerview);
 
@@ -117,21 +119,27 @@ public class HardwareWalletSetupActivity extends AppCompatActivity implements Ha
         hardwareWalletService.connectionStatus.observe(this, status -> {
             switch (status) {
                 case DISCONNECTED:
-                    progressBar.setVisibility(View.INVISIBLE);
+                    progressBar.setVisibility(View.GONE);
                     scanButton.setEnabled(true);
-                    instructionsText.setText("Please connect your device and click \"Scan\".");
+                    instructionsView.setVisibility(View.VISIBLE);
+                    recyclerView.setVisibility(View.GONE);
+                    instructionsText.setText("Connect your hardware wallet and press 'Scan' to find your accounts.");
                     break;
                 case SEARCHING:
                     progressBar.setVisibility(View.VISIBLE);
                     scanButton.setEnabled(false);
+                    instructionsView.setVisibility(View.VISIBLE);
+                    recyclerView.setVisibility(View.GONE);
                     instructionsText.setText("Connecting to device...");
                     break;
                 case CONNECTED:
                     startAccountScan();
                     break;
                 case ERROR:
-                    progressBar.setVisibility(View.INVISIBLE);
+                    progressBar.setVisibility(View.GONE);
                     scanButton.setEnabled(true);
+                    instructionsView.setVisibility(View.VISIBLE);
+                    recyclerView.setVisibility(View.GONE);
                     instructionsText.setText("Connection failed. Please reconnect and try again.");
                     break;
             }
@@ -139,10 +147,11 @@ public class HardwareWalletSetupActivity extends AppCompatActivity implements Ha
     }
 
     private void startAccountScan() {
-        instructionsText.setText("Scanning for accounts (0/" + MAX_ACCOUNTS_TO_SCAN + ")...");
-        progressBar.setIndeterminate(false);
-        progressBar.setMax(MAX_ACCOUNTS_TO_SCAN);
-        progressBar.setProgress(0);
+        instructionsText.setText("Scanning for accounts...");
+        progressBar.setVisibility(View.VISIBLE);
+        scanButton.setEnabled(false);
+        instructionsView.setVisibility(View.VISIBLE);
+        recyclerView.setVisibility(View.GONE);
         accountsFound = 0;
         accountsScanned = 0;
         scanNextAccount();
@@ -150,8 +159,6 @@ public class HardwareWalletSetupActivity extends AppCompatActivity implements Ha
 
     private void scanNextAccount() {
         if (accountsScanned < MAX_ACCOUNTS_TO_SCAN) {
-            progressBar.setProgress(accountsScanned + 1);
-            instructionsText.setText("Scanning for accounts (" + (accountsScanned + 1) + "/" + MAX_ACCOUNTS_TO_SCAN + ")...");
             hardwareWalletService.requestAccountInfo(accountsScanned, this);
         } else {
             onScanFinished();
@@ -159,13 +166,15 @@ public class HardwareWalletSetupActivity extends AppCompatActivity implements Ha
     }
 
     private void onScanFinished() {
-        progressBar.setVisibility(View.INVISIBLE);
-        progressBar.setIndeterminate(true); // Reset for next time
+        progressBar.setVisibility(View.GONE);
         scanButton.setEnabled(true);
         if (accountsFound == 0) {
             instructionsText.setText("No accounts found. Ensure the Hedera app is open on your device.");
+            instructionsView.setVisibility(View.VISIBLE);
+            recyclerView.setVisibility(View.GONE);
         } else {
-            instructionsText.setText(accountsFound + " account(s) found. Select one to import.");
+            instructionsView.setVisibility(View.GONE);
+            recyclerView.setVisibility(View.VISIBLE);
         }
     }
 

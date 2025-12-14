@@ -105,7 +105,10 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
             result -> {
                 if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
                     String scannedId = result.getData().getStringExtra("SCANNED_ID");
-                    if (scannedId != null) recipientIdEditText.setText(scannedId);
+                    if (scannedId != null) {
+                        recipientIdEditText.setText(scannedId);
+                        viewModel.verifyAccountId(scannedId);
+                    }
                 }
             }
     );
@@ -231,6 +234,10 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
             @Override
             public void afterTextChanged(Editable s) {
+                if (s == recipientIdEditText.getEditableText()) {
+                    verifiedTextView.setVisibility(View.GONE);
+                    recipientLayout.setVisibility(View.VISIBLE);
+                }
                 if (viewModel != null) {
                     viewModel.onInputChanged(safeGetText(recipientIdEditText).trim(), safeGetText(amountEditText).trim(), currentBalance);
                 }
@@ -242,9 +249,25 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
 
     private void observeViewModel() {
         viewModel.isLoading().observe(this, this::setLoadingState);
-        viewModel.getRecipientError().observe(this, error -> recipientLayout.setError(error));
+        viewModel.getRecipientError().observe(this, error -> {
+            recipientLayout.setError(error);
+            if (error != null) {
+                verifiedTextView.setVisibility(View.GONE);
+                recipientLayout.setVisibility(View.VISIBLE);
+            }
+        });
+        viewModel.getRecipientHelperText().observe(this, helperText -> recipientLayout.setHelperText(helperText));
         viewModel.getAmountError().observe(this, error -> amountLayout.setError(error));
         viewModel.isSendButtonEnabled().observe(this, isEnabled -> sendButton.setEnabled(isEnabled));
+        viewModel.getVerifiedRecipient().observe(this, accountId -> {
+            if (accountId != null && !accountId.isEmpty()) {
+                verifiedTextView.setVisibility(View.VISIBLE);
+                recipientLayout.setVisibility(View.GONE);
+            } else {
+                verifiedTextView.setVisibility(View.GONE);
+                recipientLayout.setVisibility(View.VISIBLE);
+            }
+        });
 
         viewModel.getTransactionResult().observe(this, result -> {
             if (result instanceof Result.Success) {

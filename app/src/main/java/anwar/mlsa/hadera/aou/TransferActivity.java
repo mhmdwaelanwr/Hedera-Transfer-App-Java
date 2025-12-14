@@ -327,7 +327,7 @@ public class TransferActivity extends AppCompatActivity {
         double balance = WalletStorage.getRawBalance(this);
         if (exchangeRate > 0) {
             double balanceInUSD = balance * exchangeRate;
-            String formattedBalanceInUSD = String.format(Locale.US, "$%,.2f", balanceInUSD);
+            String formattedBalanceInUSD = String.format(Locale.US, "$%,.2f USD", balanceInUSD);
             binding.exchangeRateTextView.setText(formattedBalanceInUSD);
         }
     }

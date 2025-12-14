@@ -40,6 +40,8 @@ public class IdpayViewModel extends AndroidViewModel {
     private final MutableLiveData<Result<Map<String, Object>>> transactionResult = new MutableLiveData<>();
     private final MutableLiveData<Boolean> isSendButtonEnabled = new MutableLiveData<>(false);
     private final MutableLiveData<String> exchangeRate = new MutableLiveData<>();
+    private final MutableLiveData<String> recipientHelperText = new MutableLiveData<>();
+
 
     private final Handler debounceHandler = new Handler(Looper.getMainLooper());
     private Runnable debounceRunnable;
@@ -60,6 +62,8 @@ public class IdpayViewModel extends AndroidViewModel {
     public LiveData<Result<Map<String, Object>>> getTransactionResult() { return transactionResult; }
     public LiveData<Boolean> isSendButtonEnabled() { return isSendButtonEnabled; }
     public LiveData<String> getExchangeRate() { return exchangeRate; }
+    public LiveData<String> getRecipientHelperText() { return recipientHelperText; }
+
 
     public void fetchExchangeRate() {
         String url = ApiConfig.EXCHANGE_RATE_URL;
@@ -88,6 +92,8 @@ public class IdpayViewModel extends AndroidViewModel {
     }
 
     public void onInputChanged(String recipientId, String amountStr, double currentBalance) {
+        verifiedRecipient.postValue(null);
+        recipientHelperText.postValue(null);
         debounceHandler.removeCallbacks(debounceRunnable);
         debounceRunnable = () -> validateInputs(recipientId, amountStr, currentBalance);
         debounceHandler.postDelayed(debounceRunnable, 300);
@@ -102,7 +108,19 @@ public class IdpayViewModel extends AndroidViewModel {
         } else if (!isRecipientValid) {
             recipientError.postValue("Valid Account ID is required.");
         } else {
-            recipientError.postValue(null);
+            // This is for manual input, so we use the helper text for verification feedback
+             verifyAccountUseCase.execute(recipientId, result -> {
+                if (result instanceof Result.Success) {
+                    if (((Result.Success<Boolean>) result).data) {
+                        recipientHelperText.postValue("Account ID verified");
+                        recipientError.postValue(null);
+                    } else {
+                        recipientError.postValue("Invalid Account ID");
+                    }
+                } else if (result instanceof Result.Error) {
+                    recipientError.postValue(((Result.Error<Boolean>) result).message);
+                }
+            });
         }
 
         try {
@@ -125,6 +143,7 @@ public class IdpayViewModel extends AndroidViewModel {
         isSendButtonEnabled.postValue(isRecipientValid && isAmountValid);
     }
 
+    // This method is for the QR flow, which shows the verified_text view.
     public void verifyAccountId(String accountId) {
         verifyAccountUseCase.execute(accountId, result -> {
             if (result instanceof Result.Loading) {
@@ -133,6 +152,7 @@ public class IdpayViewModel extends AndroidViewModel {
                 isLoading.postValue(false);
                 if (((Result.Success<Boolean>) result).data) {
                     verifiedRecipient.postValue(accountId);
+                    recipientError.postValue(null);
                 } else {
                     recipientError.postValue("Invalid Account ID");
                 }

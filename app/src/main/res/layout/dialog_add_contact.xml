@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
@@ -18,9 +20,12 @@
     </com.google.android.material.textfield.TextInputLayout>
 
     <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/account_id_layout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
+        app:endIconDrawable="@drawable/ic_qr_code_scanner"
+        app:endIconMode="custom"
         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
 
         <com.google.android.material.textfield.TextInputEditText
@@ -32,5 +37,18 @@
             android:hint="Account ID (e.g., 0.0.12345)"
             android:fontFamily="@font/roboto_mono" />
     </com.google.android.material.textfield.TextInputLayout>
+
+    <TextView
+        android:id="@+id/verified_text_dialog"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:drawablePadding="8dp"
+        android:fontFamily="@font/segoe_ui_regular"
+        android:text="Account ID verified"
+        android:textColor="@color/colorReceived"
+        android:visibility="gone"
+        app:drawableStartCompat="@drawable/ic_check_circle"
+        tools:visibility="visible"/>
 
 </LinearLayout>

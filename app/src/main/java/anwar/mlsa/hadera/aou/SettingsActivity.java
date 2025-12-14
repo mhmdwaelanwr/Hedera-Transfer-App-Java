@@ -9,6 +9,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
@@ -394,6 +395,7 @@ public class SettingsActivity extends AppCompatActivity {
         class AccountViewHolder extends RecyclerView.ViewHolder {
             TextView accountIdTextView, currentAccountIndicator;
             Button switchAccountButton, deleteAccountButton;
+            ImageView hardwareWalletIcon;
 
             AccountViewHolder(@NonNull View itemView) {
                 super(itemView);
@@ -401,10 +403,17 @@ public class SettingsActivity extends AppCompatActivity {
                 switchAccountButton = itemView.findViewById(R.id.switch_account_button);
                 deleteAccountButton = itemView.findViewById(R.id.delete_account_button);
                 currentAccountIndicator = itemView.findViewById(R.id.current_account_indicator);
+                hardwareWalletIcon = itemView.findViewById(R.id.hardware_wallet_icon);
             }
 
             void bind(final WalletStorage.Account account, final int position) {
                 accountIdTextView.setText(account.getAccountId());
+
+                if (account.isHardware) {
+                    hardwareWalletIcon.setVisibility(View.VISIBLE);
+                } else {
+                    hardwareWalletIcon.setVisibility(View.GONE);
+                }
 
                 if (position == WalletStorage.getCurrentAccountIndex(SettingsActivity.this)) {
                     currentAccountIndicator.setVisibility(View.VISIBLE);

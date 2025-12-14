@@ -54,7 +54,6 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
     private TextInputEditText amountEditText;
     private TextInputEditText memoEditText;
     private Button sendButton;
-    private Button connectWalletButton;
     private ProgressBar progressBar;
     private TextView balanceTextView;
     private TextView exchangeRateTextView;
@@ -72,6 +71,7 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
 
     private HardwareWalletService hardwareWalletService;
     private boolean isHardwareWalletBound = false;
+    private boolean awaitingHwConnectionForTx = false;
 
     private final ServiceConnection hardwareWalletConnection = new ServiceConnection() {
         @Override
@@ -88,35 +88,19 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
             isHardwareWalletBound = false;
             hardwareWalletService = null;
             Log.d(TAG, "HardwareWalletService disconnected");
-            updateConnectionStatus(HardwareWalletService.ConnectionStatus.DISCONNECTED);
         }
     };
 
     private void observeHardwareWalletStatus() {
-        if (hardwareWalletService != null) {
-            hardwareWalletService.connectionStatus.observe(this, this::updateConnectionStatus);
-        }
-    }
-
-    private void updateConnectionStatus(HardwareWalletService.ConnectionStatus status) {
-        switch (status) {
-            case DISCONNECTED:
-                connectWalletButton.setText("Connect Hardware Wallet");
-                connectWalletButton.setEnabled(true);
-                break;
-            case SEARCHING:
-                connectWalletButton.setText("Searching...");
-                connectWalletButton.setEnabled(false);
-                break;
-            case CONNECTED:
-                connectWalletButton.setText("Wallet Connected");
-                connectWalletButton.setEnabled(false);
-                break;
-            case ERROR:
-                connectWalletButton.setText("Connection Error");
-                connectWalletButton.setEnabled(true);
-                break;
-        }
+        if (hardwareWalletService == null) return;
+        hardwareWalletService.connectionStatus.observe(this, status -> {
+            if (status == HardwareWalletService.ConnectionStatus.CONNECTED && awaitingHwConnectionForTx) {
+                // Device was connected while we were waiting, re-trigger the transaction.
+                awaitingHwConnectionForTx = false;
+                Toast.makeText(this, "Device connected. Please try sending again.", Toast.LENGTH_LONG).show();
+                setLoadingState(false);
+            }
+        });
     }
 
     private final ActivityResultLauncher<Intent> qrScannerLauncher = registerForActivityResult(
@@ -180,15 +164,7 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
             @Override
             public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
                 super.onAuthenticationSucceeded(result);
-
-                if (isHardwareWalletBound && hardwareWalletService != null && hardwareWalletService.connectionStatus.getValue() == HardwareWalletService.ConnectionStatus.CONNECTED) {
-                    handleHardwareWalletTransaction();
-                } else {
-                    String recipient = safeGetText(recipientIdEditText);
-                    String amount = safeGetText(amountEditText);
-                    String memo = safeGetText(memoEditText).trim();
-                    viewModel.sendTransaction(recipient, amount, memo, currentBalance);
-                }
+                initiateTransaction();
             }
 
             @Override
@@ -199,10 +175,41 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
         });
 
         promptInfo = new BiometricPrompt.PromptInfo.Builder()
-                .setTitle("Biometric login for my app")
-                .setSubtitle("Log in using your biometric credential")
-                .setNegativeButtonText("Use account password")
+                .setTitle("Confirm Transaction")
+                .setSubtitle("Use your biometric credential to authorize the transaction")
+                .setNegativeButtonText("Cancel")
                 .build();
+    }
+
+    private void initiateTransaction() {
+        WalletStorage.Account currentAccount = WalletStorage.getCurrentAccount(this);
+        if (currentAccount == null) {
+            Toast.makeText(this, "No active account found.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (currentAccount.isHardware) {
+            // Hardware wallet flow
+            if (!isHardwareWalletBound || hardwareWalletService == null) {
+                Toast.makeText(this, "Hardware Wallet service is not ready. Please wait.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            if (hardwareWalletService.connectionStatus.getValue() == HardwareWalletService.ConnectionStatus.CONNECTED) {
+                handleHardwareWalletTransaction();
+            } else {
+                awaitingHwConnectionForTx = true;
+                setLoadingState(true); // Show user we are waiting
+                Toast.makeText(this, "Please connect your hardware wallet to authorize.", Toast.LENGTH_LONG).show();
+                hardwareWalletService.findAndConnectToDevice(); // Actively try to connect
+            }
+        } else {
+            // Software wallet flow
+            String recipient = safeGetText(recipientIdEditText);
+            String amount = safeGetText(amountEditText);
+            String memo = safeGetText(memoEditText).trim();
+            viewModel.sendTransaction(recipient, amount, memo, currentBalance);
+        }
     }
 
     private void initializeViews() {
@@ -210,7 +217,8 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
         amountEditText = findViewById(R.id.amount_field);
         memoEditText = findViewById(R.id.memo_field);
         sendButton = findViewById(R.id.send_button);
-        connectWalletButton = findViewById(R.id.connect_wallet_button);
+        // connectWalletButton is no longer needed in this activity
+        findViewById(R.id.connect_wallet_button).setVisibility(View.GONE);
         progressBar = findViewById(R.id.progressBar);
         balanceTextView = findViewById(R.id.balance_textview);
         exchangeRateTextView = findViewById(R.id.exchange_rate_text_view);
@@ -227,15 +235,6 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
 
     private void setupListeners() {
         sendButton.setOnClickListener(v -> showConfirmationDialog());
-
-        connectWalletButton.setOnClickListener(v -> {
-            if (isHardwareWalletBound && hardwareWalletService != null) {
-                updateConnectionStatus(HardwareWalletService.ConnectionStatus.SEARCHING);
-                hardwareWalletService.findAndConnectToDevice();
-            } else {
-                Toast.makeText(this, "Hardware Wallet Service not bound. Please wait.", Toast.LENGTH_SHORT).show();
-            }
-        });
 
         recipientLayout.setEndIconOnClickListener(v -> {
             Intent intent = new Intent(IdpayActivity.this, ScannerqrActivity.class);
@@ -328,13 +327,13 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
     public void onSignatureError(Exception e) {
         runOnUiThread(() -> {
             setLoadingState(false);
+            awaitingHwConnectionForTx = false;
             Log.e(TAG, "Signature error", e);
             Toast.makeText(IdpayActivity.this, "Failed to sign transaction: " + e.getMessage(), Toast.LENGTH_LONG).show();
         });
     }
 
     private void broadcastTransaction(byte[] signedTxBytes) {
-        // The loading state is already set from handleHardwareWalletTransaction
         new Thread(() -> {
             try {
                 Client client = Client.forTestnet();
@@ -345,7 +344,7 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
                 runOnUiThread(() -> {
                     setLoadingState(false);
                     Toast.makeText(this, "Transaction successful: " + receipt.status, Toast.LENGTH_LONG).show();
-                    // TODO: Launch a proper success screen, maybe with the transaction ID from the receipt
+                    // TODO: Launch a proper success screen
                 });
 
             } catch (TimeoutException | PrecheckStatusException e) {
@@ -374,10 +373,6 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
     private void setLoadingState(boolean isLoading) {
         progressBar.setVisibility(isLoading ? View.VISIBLE : View.GONE);
         sendButton.setEnabled(!isLoading);
-        // Keep input fields enabled for a better user experience
-        // recipientIdEditText.setEnabled(!isLoading);
-        // amountEditText.setEnabled(!isLoading);
-        // memoEditText.setEnabled(!isLoading);
     }
 
     private void showConfirmationDialog() {

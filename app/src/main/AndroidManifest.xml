@@ -38,6 +38,7 @@
         <activity android:name=".MainActivity" />
         <activity android:name=".TransferActivity" />
         <activity android:name=".HardwareWalletSetupActivity" />
+        <activity android:name=".AddressBookActivity" />
         <activity android:name=".IdpayActivity"
             android:exported="true"
             android:launchMode="singleTop">

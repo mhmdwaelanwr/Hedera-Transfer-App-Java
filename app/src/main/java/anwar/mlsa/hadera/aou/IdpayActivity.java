@@ -79,7 +79,6 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
             HardwareWalletService.LocalBinder binder = (HardwareWalletService.LocalBinder) service;
             hardwareWalletService = binder.getService();
             isHardwareWalletBound = true;
-            Log.d(TAG, "HardwareWalletService connected");
             observeHardwareWalletStatus();
         }
 
@@ -87,7 +86,6 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
         public void onServiceDisconnected(ComponentName arg0) {
             isHardwareWalletBound = false;
             hardwareWalletService = null;
-            Log.d(TAG, "HardwareWalletService disconnected");
         }
     };
 
@@ -95,7 +93,6 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
         if (hardwareWalletService == null) return;
         hardwareWalletService.connectionStatus.observe(this, status -> {
             if (status == HardwareWalletService.ConnectionStatus.CONNECTED && awaitingHwConnectionForTx) {
-                // Device was connected while we were waiting, re-trigger the transaction.
                 awaitingHwConnectionForTx = false;
                 Toast.makeText(this, "Device connected. Please try sending again.", Toast.LENGTH_LONG).show();
                 setLoadingState(false);
@@ -106,15 +103,19 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
     private final ActivityResultLauncher<Intent> qrScannerLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
-                if (result.getResultCode() == Activity.RESULT_OK) {
-                    Intent data = result.getData();
-                    if (data != null && data.hasExtra("SCANNED_ID")) {
-                        String scannedId = data.getStringExtra("SCANNED_ID");
-                        recipientIdEditText.setText(scannedId);
-                        if (viewModel != null) {
-                            viewModel.verifyAccountId(scannedId);
-                        }
-                    }
+                if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                    String scannedId = result.getData().getStringExtra("SCANNED_ID");
+                    if (scannedId != null) recipientIdEditText.setText(scannedId);
+                }
+            }
+    );
+
+    private final ActivityResultLauncher<Intent> addressBookLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                    String selectedId = result.getData().getStringExtra("SELECTED_ACCOUNT_ID");
+                    if (selectedId != null) recipientIdEditText.setText(selectedId);
                 }
             }
     );
@@ -123,10 +124,8 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.idpay);
-
         IdpayViewModelFactory factory = new IdpayViewModelFactory(getApplication());
         viewModel = new ViewModelProvider(this, factory).get(IdpayViewModel.class);
-
         initializeViews();
         setupToolbar();
         setupListeners();
@@ -153,27 +152,13 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
 
     private void setupBiometrics() {
         executor = ContextCompat.getMainExecutor(this);
-        biometricPrompt = new BiometricPrompt(IdpayActivity.this,
-                executor, new BiometricPrompt.AuthenticationCallback() {
-            @Override
-            public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
-                super.onAuthenticationError(errorCode, errString);
-                Toast.makeText(getApplicationContext(), "Authentication error: " + errString, Toast.LENGTH_SHORT).show();
-            }
-
+        biometricPrompt = new BiometricPrompt(IdpayActivity.this, executor, new BiometricPrompt.AuthenticationCallback() {
             @Override
             public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
                 super.onAuthenticationSucceeded(result);
                 initiateTransaction();
             }
-
-            @Override
-            public void onAuthenticationFailed() {
-                super.onAuthenticationFailed();
-                Toast.makeText(getApplicationContext(), "Authentication failed", Toast.LENGTH_SHORT).show();
-            }
         });
-
         promptInfo = new BiometricPrompt.PromptInfo.Builder()
                 .setTitle("Confirm Transaction")
                 .setSubtitle("Use your biometric credential to authorize the transaction")
@@ -189,22 +174,19 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
         }
 
         if (currentAccount.isHardware) {
-            // Hardware wallet flow
             if (!isHardwareWalletBound || hardwareWalletService == null) {
                 Toast.makeText(this, "Hardware Wallet service is not ready. Please wait.", Toast.LENGTH_SHORT).show();
                 return;
             }
-
             if (hardwareWalletService.connectionStatus.getValue() == HardwareWalletService.ConnectionStatus.CONNECTED) {
                 handleHardwareWalletTransaction();
             } else {
                 awaitingHwConnectionForTx = true;
-                setLoadingState(true); // Show user we are waiting
+                setLoadingState(true);
                 Toast.makeText(this, "Please connect your hardware wallet to authorize.", Toast.LENGTH_LONG).show();
-                hardwareWalletService.findAndConnectToDevice(); // Actively try to connect
+                hardwareWalletService.findAndConnectToDevice();
             }
         } else {
-            // Software wallet flow
             String recipient = safeGetText(recipientIdEditText);
             String amount = safeGetText(amountEditText);
             String memo = safeGetText(memoEditText).trim();
@@ -228,12 +210,16 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
 
     private void setupToolbar() {
         MaterialToolbar toolbar = findViewById(R.id.toolbar);
-        setSupportActionBar(toolbar);
         toolbar.setNavigationOnClickListener(v -> finish());
     }
 
     private void setupListeners() {
         sendButton.setOnClickListener(v -> showConfirmationDialog());
+
+        recipientLayout.setStartIconOnClickListener(v -> {
+            Intent intent = new Intent(IdpayActivity.this, AddressBookActivity.class);
+            addressBookLauncher.launch(intent);
+        });
 
         recipientLayout.setEndIconOnClickListener(v -> {
             Intent intent = new Intent(IdpayActivity.this, ScannerqrActivity.class);
@@ -241,12 +227,8 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
         });
 
         TextWatcher textWatcher = new TextWatcher() {
-            @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-
-            @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {}
-
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
             @Override
             public void afterTextChanged(Editable s) {
                 if (viewModel != null) {
@@ -254,7 +236,6 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
                 }
             }
         };
-
         recipientIdEditText.addTextChangedListener(textWatcher);
         amountEditText.addTextChangedListener(textWatcher);
     }
@@ -265,19 +246,12 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
         viewModel.getAmountError().observe(this, error -> amountLayout.setError(error));
         viewModel.isSendButtonEnabled().observe(this, isEnabled -> sendButton.setEnabled(isEnabled));
 
-        viewModel.getVerifiedRecipient().observe(this, recipientId -> {
-            recipientLayout.setVisibility(View.GONE);
-            verifiedTextView.setVisibility(View.VISIBLE);
-            verifiedTextView.setText(getString(R.string.verified_recipient, recipientId));
-        });
-
         viewModel.getTransactionResult().observe(this, result -> {
             if (result instanceof Result.Success) {
                 performHapticFeedback();
                 launchSuccessScreen(((Result.Success<Map<String, Object>>) result).data);
             } else if (result instanceof Result.Error) {
-                String errorMessage = ((Result.Error<Map<String, Object>>) result).message;
-                Toast.makeText(this, "Transaction Failed: " + errorMessage, Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Transaction Failed: " + ((Result.Error) result).message, Toast.LENGTH_LONG).show();
             }
         });
 
@@ -287,7 +261,6 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
                     exchangeRate = Double.parseDouble(rate);
                     updateBalanceInUSD();
                 } catch (NumberFormatException e) {
-                    Log.e(TAG, "Could not parse exchange rate from view model", e);
                     exchangeRateTextView.setText("Invalid rate");
                 }
             } else {
@@ -299,20 +272,18 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
     private void handleHardwareWalletTransaction() {
         setLoadingState(true);
         Toast.makeText(this, "Please confirm the transaction on your hardware wallet.", Toast.LENGTH_LONG).show();
-
-        String recipient = safeGetText(recipientIdEditText);
-        String amount = safeGetText(amountEditText);
-        String memo = safeGetText(memoEditText).trim();
-        String senderAccountId = WalletStorage.getAccountId(this);
-
-        if (senderAccountId == null || senderAccountId.isEmpty()) {
-            Toast.makeText(this, "Sender account ID not found.", Toast.LENGTH_SHORT).show();
+        TransferTransaction unsignedTx = viewModel.createUnsignedTransaction(
+                WalletStorage.getAccountId(this),
+                safeGetText(recipientIdEditText),
+                safeGetText(amountEditText),
+                safeGetText(memoEditText).trim()
+        );
+        if (unsignedTx != null) {
+            hardwareWalletService.signTransaction(unsignedTx.toBytes(), this);
+        } else {
+            Toast.makeText(this, "Failed to create transaction.", Toast.LENGTH_SHORT).show();
             setLoadingState(false);
-            return;
         }
-
-        TransferTransaction unsignedTx = viewModel.createUnsignedTransaction(senderAccountId, recipient, amount, memo);
-        hardwareWalletService.signTransaction(unsignedTx.toBytes(), this);
     }
 
     @Override
@@ -338,17 +309,11 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
                 Transaction<?> signedTx = Transaction.fromBytes(signedTxBytes);
                 TransactionResponse txResponse = signedTx.execute(client);
                 TransactionReceipt receipt = txResponse.getReceipt(client);
-
                 runOnUiThread(() -> {
                     setLoadingState(false);
                     Toast.makeText(this, "Transaction successful: " + receipt.status, Toast.LENGTH_LONG).show();
-                    // TODO: Launch a proper success screen
                 });
-
-            } catch (TimeoutException | PrecheckStatusException e) {
-                onSignatureError(e); // Reuse error handling
             } catch (Exception e) {
-                Log.e(TAG, "Transaction broadcast failed", e);
                 onSignatureError(e);
             }
         }).start();
@@ -376,13 +341,10 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
     private void showConfirmationDialog() {
         String amount = safeGetText(amountEditText);
         String recipient = safeGetText(recipientIdEditText);
-
         new AlertDialog.Builder(this)
                 .setTitle(getString(R.string.confirm_transaction_title))
                 .setMessage(getString(R.string.confirm_transaction_message, amount, recipient))
-                .setPositiveButton(getString(R.string.send_button_text), (dialog, which) -> {
-                    biometricPrompt.authenticate(promptInfo);
-                })
+                .setPositiveButton(getString(R.string.send_button_text), (dialog, which) -> biometricPrompt.authenticate(promptInfo))
                 .setNegativeButton(getString(R.string.cancel_button_text), null)
                 .show();
     }

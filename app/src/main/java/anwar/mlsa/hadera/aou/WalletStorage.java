@@ -12,6 +12,7 @@ import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.lang.reflect.Type;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
@@ -23,6 +24,7 @@ public class WalletStorage {
 
     private static final String PREF_NAME = "EncryptedWalletData";
     private static final String KEY_ACCOUNTS = "ACCOUNTS";
+    private static final String KEY_CONTACTS = "CONTACTS";
     private static final String KEY_CURRENT_ACCOUNT_INDEX = "CURRENT_ACCOUNT_INDEX";
     private static final int MAX_ACCOUNTS = 6;
 
@@ -47,6 +49,7 @@ public class WalletStorage {
         }
     }
 
+    // --- Account Management ---
     public static List<Account> getAccounts(Context context) {
         String json = getPrefs(context).getString(KEY_ACCOUNTS, null);
         if (json == null) return new ArrayList<>();
@@ -72,9 +75,9 @@ public class WalletStorage {
 
     private static boolean addAccount(Context context, String accountId, String privateKey, boolean isHardware) {
         List<Account> accounts = getAccounts(context);
-        if (accounts.size() >= MAX_ACCOUNTS) return false;
+        if (!canAddAccount(context)) return false;
         for (Account account : accounts) {
-            if (account.getAccountId().equals(accountId)) return false; // Account already exists
+            if (account.getAccountId().equals(accountId)) return false;
         }
         accounts.add(new Account(accountId, privateKey, isHardware));
         saveAccounts(context, accounts);
@@ -135,6 +138,35 @@ public class WalletStorage {
         return currentAccount.getPrivateKey();
     }
 
+    // --- Contact Management ---
+    public static List<Contact> getContacts(Context context) {
+        String json = getPrefs(context).getString(KEY_CONTACTS, null);
+        if (json == null) return new ArrayList<>();
+        Type type = new TypeToken<ArrayList<Contact>>() {}.getType();
+        return new Gson().fromJson(json, type);
+    }
+
+    public static void saveContacts(Context context, List<Contact> contacts) {
+        getPrefs(context).edit().putString(KEY_CONTACTS, new Gson().toJson(contacts)).apply();
+    }
+
+    public static boolean addContact(Context context, String name, String accountId) {
+        List<Contact> contacts = getContacts(context);
+        for (Contact contact : contacts) {
+            if (contact.getAccountId().equals(accountId)) return false;
+        }
+        contacts.add(new Contact(name, accountId));
+        saveContacts(context, contacts);
+        return true;
+    }
+
+    public static void deleteContact(Context context, Contact contactToDelete) {
+        List<Contact> contacts = getContacts(context);
+        contacts.removeIf(contact -> contact.getAccountId().equals(contactToDelete.getAccountId()));
+        saveContacts(context, contacts);
+    }
+
+    // --- Balance Management ---
     public static void saveFormattedBalance(Context context, String formattedBalance) {
         String accountId = getAccountId(context);
         if (accountId != null) {
@@ -158,71 +190,17 @@ public class WalletStorage {
         String accountId = getAccountId(context);
         return (accountId != null) ? Double.longBitsToDouble(getPrefs(context).getLong(accountId + SUFFIX_RAW_BALANCE, 0L)) : 0.0;
     }
-    
-    // ... (rest of the history methods remain the same)
-    private static void migrateHistoryIfNecessary(Context context, String accountId) {
-        SharedPreferences prefs = getPrefs(context);
-        boolean isMigrated = prefs.getBoolean(accountId + SUFFIX_HISTORY_MIGRATED, false);
-        if (isMigrated) {
-            return;
-        }
 
-        String json = prefs.getString(accountId + SUFFIX_TRANSACTION_HISTORY, null);
-        if (json == null || json.isEmpty() || json.equals("[]")) {
-            prefs.edit().putBoolean(accountId + SUFFIX_HISTORY_MIGRATED, true).apply();
-            return; 
-        }
-
-        Gson gson = new Gson();
-        try {
-            Type oldHistoryType = new TypeToken<ArrayList<HashMap<String, Object>>>() {}.getType();
-            List<Map<String, Object>> oldHistory = gson.fromJson(json, oldHistoryType);
-
-            if (oldHistory != null && !oldHistory.isEmpty() && oldHistory.get(0) != null && oldHistory.get(0).containsKey("recipient")) {
-                ArrayList<Transaction> newHistory = new ArrayList<>();
-                for (Map<String, Object> oldTx : oldHistory) {
-                    Transaction newTx = new Transaction();
-                    newTx.type = (String) oldTx.get("type");
-                    newTx.date = (String) oldTx.get("date");
-                    newTx.amount = (String) oldTx.get("amount");
-                    newTx.party = "To: " + oldTx.get("recipient");
-                    newTx.status = (String) oldTx.get("status");
-                    newTx.fee = oldTx.containsKey("fee") ? (String) oldTx.get("fee") : "";
-                    newTx.memo = oldTx.containsKey("memo") ? (String) oldTx.get("memo") : "";
-                    newHistory.add(newTx);
-                }
-
-                String newJson = gson.toJson(newHistory);
-                prefs.edit().putString(accountId + SUFFIX_TRANSACTION_HISTORY, newJson).apply();
-                Log.i("WalletStorage", "Successfully migrated transaction history for account " + accountId);
-            }
-        } catch (Exception e) {
-            Log.e("WalletStorage", "Could not migrate history, data might already be new or is corrupt.", e);
-        } finally {
-            prefs.edit().putBoolean(accountId + SUFFIX_HISTORY_MIGRATED, true).apply();
-        }
-    }
-
+    // --- History Management ---
     public static ArrayList<Transaction> getHistory(Context context) {
         String accountId = getAccountId(context);
-        if (accountId == null) {
-            return new ArrayList<>();
-        }
-
-        migrateHistoryIfNecessary(context, accountId);
-
+        if (accountId == null) return new ArrayList<>();
         String json = getPrefs(context).getString(accountId + SUFFIX_TRANSACTION_HISTORY, null);
-
-        if (json == null || json.isEmpty()) {
-            return new ArrayList<>();
-        }
-
+        if (json == null || json.isEmpty()) return new ArrayList<>();
         try {
-            Type transactionListType = new TypeToken<ArrayList<Transaction>>() {}.getType();
-            ArrayList<Transaction> history = new Gson().fromJson(json, transactionListType);
-            return history != null ? history : new ArrayList<>();
+            Type type = new TypeToken<ArrayList<Transaction>>() {}.getType();
+            return new Gson().fromJson(json, type);
         } catch (JsonSyntaxException e) {
-            Log.e("WalletStorage", "Could not parse migrated history, returning empty list.", e);
             return new ArrayList<>();
         }
     }
@@ -231,20 +209,18 @@ public class WalletStorage {
         String accountId = getAccountId(context);
         if (accountId != null) {
             ArrayList<Transaction> history = getHistory(context);
-            if (history == null) { 
-                history = new ArrayList<>();
-            }
+            if (history == null) history = new ArrayList<>();
             history.add(0, newTransaction);
             String json = new Gson().toJson(history);
             getPrefs(context).edit().putString(accountId + SUFFIX_TRANSACTION_HISTORY, json).apply();
         }
     }
 
-
     public static void logout(Context context) {
         getPrefs(context).edit().clear().apply();
     }
 
+    // --- Data Classes ---
     public static class Account {
         private final String accountId;
         private final String privateKey;
@@ -256,12 +232,20 @@ public class WalletStorage {
             this.isHardware = isHardware;
         }
 
-        public String getAccountId() {
-            return accountId;
+        public String getAccountId() { return accountId; }
+        public String getPrivateKey() { return privateKey; }
+    }
+
+    public static class Contact implements Serializable {
+        private final String name;
+        private final String accountId;
+
+        public Contact(String name, String accountId) {
+            this.name = name;
+            this.accountId = accountId;
         }
 
-        public String getPrivateKey() {
-            return privateKey;
-        }
+        public String getName() { return name; }
+        public String getAccountId() { return accountId; }
     }
 }

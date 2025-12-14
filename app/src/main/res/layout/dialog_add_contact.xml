@@ -27,6 +27,8 @@
             android:id="@+id/edit_text_account_id"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:digits="0123456789."
+            android:maxLength="11"
             android:hint="Account ID (e.g., 0.0.12345)"
             android:fontFamily="@font/roboto_mono" />
     </com.google.android.material.textfield.TextInputLayout>

@@ -109,6 +109,8 @@
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/recipient_field"
+                    android:maxLength="11"
+                    android:digits="0123456789."
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:fontFamily="@font/roboto_mono" />

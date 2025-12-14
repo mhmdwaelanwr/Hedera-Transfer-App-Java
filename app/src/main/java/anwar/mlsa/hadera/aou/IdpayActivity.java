@@ -72,6 +72,7 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
     private HardwareWalletService hardwareWalletService;
     private boolean isHardwareWalletBound = false;
     private boolean awaitingHwConnectionForTx = false;
+    private TextWatcher textWatcher;
 
     private final ServiceConnection hardwareWalletConnection = new ServiceConnection() {
         @Override
@@ -106,8 +107,10 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
                 if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
                     String scannedId = result.getData().getStringExtra("SCANNED_ID");
                     if (scannedId != null) {
+                        recipientIdEditText.removeTextChangedListener(textWatcher);
                         recipientIdEditText.setText(scannedId);
                         viewModel.verifyAccountId(scannedId);
+                        recipientIdEditText.addTextChangedListener(textWatcher);
                     }
                 }
             }
@@ -118,7 +121,12 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
             result -> {
                 if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
                     String selectedId = result.getData().getStringExtra("SELECTED_ACCOUNT_ID");
-                    if (selectedId != null) recipientIdEditText.setText(selectedId);
+                    if (selectedId != null) {
+                        recipientIdEditText.removeTextChangedListener(textWatcher);
+                        recipientIdEditText.setText(selectedId);
+                        viewModel.verifyAccountId(selectedId);
+                        recipientIdEditText.addTextChangedListener(textWatcher);
+                    }
                 }
             }
     );
@@ -229,7 +237,7 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
             qrScannerLauncher.launch(intent);
         });
 
-        TextWatcher textWatcher = new TextWatcher() {
+        textWatcher = new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
             @Override

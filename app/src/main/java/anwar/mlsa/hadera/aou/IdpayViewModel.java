@@ -100,13 +100,13 @@ public class IdpayViewModel extends AndroidViewModel {
     }
 
     private void validateInputs(String recipientId, String amountStr, double currentBalance) {
-        boolean isRecipientValid = recipientId != null && recipientId.matches("^0\\.0\\.[0-9]+$");
+        boolean isRecipientValid = recipientId != null && recipientId.matches("^0\\.0\\.[0-9]{7}$");
         boolean isAmountValid = false;
 
         if (recipientId == null || recipientId.isEmpty()) {
              recipientError.postValue(null);
         } else if (!isRecipientValid) {
-            recipientError.postValue("Valid Account ID is required.");
+            recipientError.postValue("Account ID must be in the format 0.0.XXXXXXX");
         } else {
             // This is for manual input, so we use the helper text for verification feedback
              verifyAccountUseCase.execute(recipientId, result -> {

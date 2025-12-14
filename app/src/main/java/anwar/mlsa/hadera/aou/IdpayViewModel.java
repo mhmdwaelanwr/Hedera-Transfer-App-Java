@@ -3,19 +3,26 @@ package anwar.mlsa.hadera.aou;
 import android.app.Application;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
+
 import androidx.annotation.NonNull;
 import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
+import com.android.volley.Request;
+import com.android.volley.RequestQueue;
+import com.android.volley.toolbox.JsonObjectRequest;
+import com.android.volley.toolbox.Volley;
 import com.hedera.hashgraph.sdk.AccountId;
 import com.hedera.hashgraph.sdk.Hbar;
 import com.hedera.hashgraph.sdk.TransferTransaction;
 
+import org.json.JSONObject;
+
 import java.math.BigDecimal;
 import java.util.Map;
 
-import anwar.mlsa.hadera.aou.domain.use_case.GetExchangeRateUseCase;
 import anwar.mlsa.hadera.aou.domain.use_case.SendTransactionUseCase;
 import anwar.mlsa.hadera.aou.domain.use_case.VerifyAccountUseCase;
 import anwar.mlsa.hadera.aou.domain.util.Result;
@@ -24,7 +31,7 @@ public class IdpayViewModel extends AndroidViewModel {
 
     private final VerifyAccountUseCase verifyAccountUseCase;
     private final SendTransactionUseCase sendTransactionUseCase;
-    private final GetExchangeRateUseCase getExchangeRateUseCase;
+    private final RequestQueue requestQueue;
 
     private final MutableLiveData<Boolean> isLoading = new MutableLiveData<>(false);
     private final MutableLiveData<String> recipientError = new MutableLiveData<>();
@@ -39,12 +46,11 @@ public class IdpayViewModel extends AndroidViewModel {
 
     public IdpayViewModel(@NonNull Application application,
                             VerifyAccountUseCase verifyAccountUseCase,
-                            SendTransactionUseCase sendTransactionUseCase,
-                            GetExchangeRateUseCase getExchangeRateUseCase) {
+                            SendTransactionUseCase sendTransactionUseCase) {
         super(application);
         this.verifyAccountUseCase = verifyAccountUseCase;
         this.sendTransactionUseCase = sendTransactionUseCase;
-        this.getExchangeRateUseCase = getExchangeRateUseCase;
+        this.requestQueue = Volley.newRequestQueue(application);
     }
 
     public LiveData<Boolean> isLoading() { return isLoading; }
@@ -56,13 +62,29 @@ public class IdpayViewModel extends AndroidViewModel {
     public LiveData<String> getExchangeRate() { return exchangeRate; }
 
     public void fetchExchangeRate() {
-        getExchangeRateUseCase.execute(result -> {
-            if (result instanceof Result.Success) {
-                exchangeRate.postValue(((Result.Success<String>) result).data);
-            } else if (result instanceof Result.Error) {
-                exchangeRate.postValue(((Result.Error<String>) result).message);
-            }
-        });
+        String url = ApiConfig.EXCHANGE_RATE_URL;
+
+        JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(
+                Request.Method.GET, url, null,
+                response -> {
+                    try {
+                        // The price is in tinycents, we need to convert to cents, then to dollars.
+                        double cents = response.getJSONObject("current_rate").getInt("cent_equivalent");
+                        double hbars = response.getJSONObject("current_rate").getInt("hbar_equivalent");
+                        double priceInUsd = (cents / hbars) / 100.0;
+                        exchangeRate.postValue(String.valueOf(priceInUsd));
+                    } catch (Exception e) {
+                        Log.e("IdpayViewModel", "Error parsing Hedera Mirror Node response", e);
+                        exchangeRate.postValue("Error");
+                    }
+                },
+                error -> {
+                    Log.e("IdpayViewModel", "Error fetching Hedera Mirror Node price", error);
+                    exchangeRate.postValue("Error");
+                }
+        );
+
+        requestQueue.add(jsonObjectRequest);
     }
 
     public void onInputChanged(String recipientId, String amountStr, double currentBalance) {
@@ -165,5 +187,8 @@ public class IdpayViewModel extends AndroidViewModel {
     protected void onCleared() {
         super.onCleared();
         debounceHandler.removeCallbacks(debounceRunnable);
+        if (requestQueue != null) {
+            requestQueue.cancelAll(this);
+        }
     }
 }

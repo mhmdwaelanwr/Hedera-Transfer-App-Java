@@ -217,7 +217,6 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
         amountEditText = findViewById(R.id.amount_field);
         memoEditText = findViewById(R.id.memo_field);
         sendButton = findViewById(R.id.send_button);
-        // connectWalletButton is no longer needed in this activity
         findViewById(R.id.connect_wallet_button).setVisibility(View.GONE);
         progressBar = findViewById(R.id.progressBar);
         balanceTextView = findViewById(R.id.balance_textview);
@@ -283,17 +282,16 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
         });
 
         viewModel.getExchangeRate().observe(this, rate -> {
-            if (rate != null) {
+            if (rate != null && !rate.equalsIgnoreCase("Error")) {
                 try {
-                    String[] parts = rate.split("=");
-                    if (parts.length > 1) {
-                        String rateValueString = parts[1].replace("$", "").trim();
-                        exchangeRate = Double.parseDouble(rateValueString);
-                        updateBalanceInUSD();
-                    }
+                    exchangeRate = Double.parseDouble(rate);
+                    updateBalanceInUSD();
                 } catch (NumberFormatException e) {
-                    exchangeRateTextView.setText(rate);
+                    Log.e(TAG, "Could not parse exchange rate from view model", e);
+                    exchangeRateTextView.setText("Invalid rate");
                 }
+            } else {
+                exchangeRateTextView.setText("Rate N/A");
             }
         });
     }
@@ -359,7 +357,7 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
     private void updateBalanceInUSD() {
         if (exchangeRate > 0) {
             double balanceInUSD = currentBalance * exchangeRate;
-            String formattedBalanceInUSD = String.format(Locale.US, "$%,.2f", balanceInUSD);
+            String formattedBalanceInUSD = String.format(Locale.US, "$%,.2f USD", balanceInUSD);
             exchangeRateTextView.setText(formattedBalanceInUSD);
         }
     }

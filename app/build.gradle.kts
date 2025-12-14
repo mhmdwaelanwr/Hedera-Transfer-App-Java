@@ -49,7 +49,7 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.0.1")
 
     // Network
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.android.volley:volley:1.2.1")
 
     // Image Loading
     implementation("com.github.bumptech.glide:glide:4.16.0")
@@ -62,7 +62,6 @@ dependencies {
     implementation("com.github.yuriy-budiyev:code-scanner:2.3.2")
     implementation("com.google.zxing:core:3.5.4")
     implementation("com.google.code.gson:gson:2.13.2")
-    implementation("io.github.everythingme:overscroll-decor-android:1.1.1")
     
     // WorkManager
     implementation("androidx.work:work-runtime:2.9.0")

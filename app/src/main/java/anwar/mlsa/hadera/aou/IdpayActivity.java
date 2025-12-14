@@ -72,7 +72,7 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
     private HardwareWalletService hardwareWalletService;
     private boolean isHardwareWalletBound = false;
     private boolean awaitingHwConnectionForTx = false;
-    private TextWatcher textWatcher;
+    private TextWatcher recipientTextWatcher, amountTextWatcher;
 
     private final ServiceConnection hardwareWalletConnection = new ServiceConnection() {
         @Override
@@ -107,10 +107,8 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
                 if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
                     String scannedId = result.getData().getStringExtra("SCANNED_ID");
                     if (scannedId != null) {
-                        recipientIdEditText.removeTextChangedListener(textWatcher);
-                        recipientIdEditText.setText(scannedId);
+                        updateRecipientText(scannedId);
                         viewModel.verifyAccountId(scannedId);
-                        recipientIdEditText.addTextChangedListener(textWatcher);
                     }
                 }
             }
@@ -122,14 +120,18 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
                 if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
                     String selectedId = result.getData().getStringExtra("SELECTED_ACCOUNT_ID");
                     if (selectedId != null) {
-                        recipientIdEditText.removeTextChangedListener(textWatcher);
-                        recipientIdEditText.setText(selectedId);
+                        updateRecipientText(selectedId);
                         viewModel.verifyAccountId(selectedId);
-                        recipientIdEditText.addTextChangedListener(textWatcher);
                     }
                 }
             }
     );
+    
+    private void updateRecipientText(String text) {
+        recipientIdEditText.removeTextChangedListener(recipientTextWatcher);
+        recipientIdEditText.setText(text);
+        recipientIdEditText.addTextChangedListener(recipientTextWatcher);
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -237,22 +239,32 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
             qrScannerLauncher.launch(intent);
         });
 
-        textWatcher = new TextWatcher() {
+        recipientTextWatcher = new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
             @Override
             public void afterTextChanged(Editable s) {
-                if (s == recipientIdEditText.getEditableText()) {
-                    verifiedTextView.setVisibility(View.GONE);
-                    recipientLayout.setVisibility(View.VISIBLE);
-                }
                 if (viewModel != null) {
-                    viewModel.onInputChanged(safeGetText(recipientIdEditText).trim(), safeGetText(amountEditText).trim(), currentBalance);
+                    viewModel.onRecipientInputChanged(s.toString().trim(), safeGetText(amountEditText).trim(), currentBalance);
+                }
+                 verifiedTextView.setVisibility(View.GONE);
+                 recipientLayout.setVisibility(View.VISIBLE);
+            }
+        };
+        
+        amountTextWatcher = new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (viewModel != null) {
+                     viewModel.onAmountInputChanged(s.toString().trim(), currentBalance);
                 }
             }
         };
-        recipientIdEditText.addTextChangedListener(textWatcher);
-        amountEditText.addTextChangedListener(textWatcher);
+        
+        recipientIdEditText.addTextChangedListener(recipientTextWatcher);
+        amountEditText.addTextChangedListener(amountTextWatcher);
     }
 
     private void observeViewModel() {
@@ -264,13 +276,15 @@ public class IdpayActivity extends AppCompatActivity implements HardwareWalletSe
                 recipientLayout.setVisibility(View.VISIBLE);
             }
         });
-        viewModel.getRecipientHelperText().observe(this, helperText -> recipientLayout.setHelperText(helperText));
+        viewModel.getRecipientHelperText().observe(this, recipientLayout::setHelperText);
         viewModel.getAmountError().observe(this, error -> amountLayout.setError(error));
         viewModel.isSendButtonEnabled().observe(this, isEnabled -> sendButton.setEnabled(isEnabled));
         viewModel.getVerifiedRecipient().observe(this, accountId -> {
             if (accountId != null && !accountId.isEmpty()) {
                 verifiedTextView.setVisibility(View.VISIBLE);
                 recipientLayout.setVisibility(View.GONE);
+                // Also trigger amount validation in case amount was already entered
+                 viewModel.onAmountInputChanged(safeGetText(amountEditText).trim(), currentBalance);
             } else {
                 verifiedTextView.setVisibility(View.GONE);
                 recipientLayout.setVisibility(View.VISIBLE);

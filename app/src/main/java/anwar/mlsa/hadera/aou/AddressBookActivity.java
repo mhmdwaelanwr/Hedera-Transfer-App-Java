@@ -147,7 +147,7 @@ public class AddressBookActivity extends AppCompatActivity {
             @Override
             public void afterTextChanged(Editable s) {
                 // Trigger manual validation flow in ViewModel
-                viewModel.onInputChanged(s.toString().trim(), "0", 0);
+                viewModel.onRecipientInputChanged(s.toString().trim(), "0", 0);
             }
         };
         accountIdEditText.addTextChangedListener(dialogTextWatcher);
@@ -190,7 +190,7 @@ public class AddressBookActivity extends AppCompatActivity {
         scannedIdResult.observe(this, qrResultObserver);
 
         // Reset ViewModel state for the new dialog
-        viewModel.onInputChanged("", "0", 0);
+        viewModel.onRecipientInputChanged("", "0", 0);
 
         builder.setView(view)
                 .setTitle("Add New Contact")

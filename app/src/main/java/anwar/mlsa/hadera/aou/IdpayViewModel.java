@@ -42,9 +42,9 @@ public class IdpayViewModel extends AndroidViewModel {
     private final MutableLiveData<String> exchangeRate = new MutableLiveData<>();
     private final MutableLiveData<String> recipientHelperText = new MutableLiveData<>();
 
-
     private final Handler debounceHandler = new Handler(Looper.getMainLooper());
     private Runnable debounceRunnable;
+    private boolean isRecipientCurrentlyValid = false;
 
     public IdpayViewModel(@NonNull Application application,
                             VerifyAccountUseCase verifyAccountUseCase,
@@ -64,15 +64,12 @@ public class IdpayViewModel extends AndroidViewModel {
     public LiveData<String> getExchangeRate() { return exchangeRate; }
     public LiveData<String> getRecipientHelperText() { return recipientHelperText; }
 
-
     public void fetchExchangeRate() {
         String url = ApiConfig.EXCHANGE_RATE_URL;
-
         JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(
                 Request.Method.GET, url, null,
                 response -> {
                     try {
-                        // The price is in tinycents, we need to convert to cents, then to dollars.
                         double cents = response.getJSONObject("current_rate").getInt("cent_equivalent");
                         double hbars = response.getJSONObject("current_rate").getInt("hbar_equivalent");
                         double priceInUsd = (cents / hbars) / 100.0;
@@ -87,42 +84,24 @@ public class IdpayViewModel extends AndroidViewModel {
                     exchangeRate.postValue("Error");
                 }
         );
-
         requestQueue.add(jsonObjectRequest);
     }
 
-    public void onInputChanged(String recipientId, String amountStr, double currentBalance) {
+    public void onRecipientInputChanged(String recipientId, String amountStr, double currentBalance) {
         verifiedRecipient.postValue(null);
         recipientHelperText.postValue(null);
+        isRecipientCurrentlyValid = false;
         debounceHandler.removeCallbacks(debounceRunnable);
         debounceRunnable = () -> validateInputs(recipientId, amountStr, currentBalance);
         debounceHandler.postDelayed(debounceRunnable, 300);
     }
 
-    private void validateInputs(String recipientId, String amountStr, double currentBalance) {
-        boolean isRecipientValid = recipientId != null && recipientId.matches("^0\\.0\\.[0-9]{7}$");
+    public void onAmountInputChanged(String amountStr, double currentBalance) {
+        validateAmount(amountStr, currentBalance);
+    }
+
+    private void validateAmount(String amountStr, double currentBalance) {
         boolean isAmountValid = false;
-
-        if (recipientId == null || recipientId.isEmpty()) {
-             recipientError.postValue(null);
-        } else if (!isRecipientValid) {
-            recipientError.postValue("Account ID must be in the format 0.0.XXXXXXX");
-        } else {
-            // This is for manual input, so we use the helper text for verification feedback
-             verifyAccountUseCase.execute(recipientId, result -> {
-                if (result instanceof Result.Success) {
-                    if (((Result.Success<Boolean>) result).data) {
-                        recipientHelperText.postValue("Account ID verified");
-                        recipientError.postValue(null);
-                    } else {
-                        recipientError.postValue("Invalid Account ID");
-                    }
-                } else if (result instanceof Result.Error) {
-                    recipientError.postValue(((Result.Error<Boolean>) result).message);
-                }
-            });
-        }
-
         try {
             double amount = Double.parseDouble(amountStr);
             if (amount > 0 && amount <= currentBalance) {
@@ -137,13 +116,40 @@ public class IdpayViewModel extends AndroidViewModel {
             if (amountStr != null && !amountStr.isEmpty()) {
                 amountError.postValue("Invalid amount format.");
             } else {
-                 amountError.postValue(null);
+                amountError.postValue(null);
             }
         }
-        isSendButtonEnabled.postValue(isRecipientValid && isAmountValid);
+        isSendButtonEnabled.postValue(isRecipientCurrentlyValid && isAmountValid);
     }
 
-    // This method is for the QR flow, which shows the verified_text view.
+    private void validateInputs(String recipientId, String amountStr, double currentBalance) {
+        isRecipientCurrentlyValid = recipientId != null && recipientId.matches("^0\\.0\\.[0-9]{7}$");
+
+        if (recipientId == null || recipientId.isEmpty()) {
+            recipientError.postValue(null);
+        } else if (!isRecipientCurrentlyValid) {
+            recipientError.postValue("Account ID must be in the format 0.0.XXXXXXX");
+        } else {
+            verifyAccountUseCase.execute(recipientId, result -> {
+                if (result instanceof Result.Success) {
+                    if (((Result.Success<Boolean>) result).data) {
+                        recipientHelperText.postValue("Account ID verified");
+                        recipientError.postValue(null);
+                    } else {
+                        isRecipientCurrentlyValid = false;
+                        recipientError.postValue("Invalid Account ID");
+                    }
+                } else if (result instanceof Result.Error) {
+                    isRecipientCurrentlyValid = false;
+                    recipientError.postValue(((Result.Error<Boolean>) result).message);
+                }
+                validateAmount(amountStr, currentBalance);
+            });
+            return; // Exit here, validateAmount will be called in the callback
+        }
+        validateAmount(amountStr, currentBalance);
+    }
+
     public void verifyAccountId(String accountId) {
         verifyAccountUseCase.execute(accountId, result -> {
             if (result instanceof Result.Loading) {
@@ -153,12 +159,15 @@ public class IdpayViewModel extends AndroidViewModel {
                 if (((Result.Success<Boolean>) result).data) {
                     verifiedRecipient.postValue(accountId);
                     recipientError.postValue(null);
+                    isRecipientCurrentlyValid = true;
                 } else {
                     recipientError.postValue("Invalid Account ID");
+                    isRecipientCurrentlyValid = false;
                 }
             } else if (result instanceof Result.Error) {
                 isLoading.postValue(false);
                 recipientError.postValue(((Result.Error<Boolean>) result).message);
+                isRecipientCurrentlyValid = false;
             }
         });
     }
@@ -186,7 +195,6 @@ public class IdpayViewModel extends AndroidViewModel {
                     .addHbarTransfer(AccountId.fromString(recipientId), Hbar.from(amount))
                     .setTransactionMemo(memo);
         } catch (NumberFormatException e) {
-            // Handle error appropriately
             return null;
         }
     }

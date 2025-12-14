@@ -44,11 +44,13 @@ public class MarketDataParser {
             
             if (root.has("prices")) {
                 // CoinGecko returns prices as [[timestamp, price], ...]
-                // For simplicity, we'll just return the most recent price
-                // In a real implementation, you'd want to map timestamps to prices
-                JsonObject priceData = root.getAsJsonObject();
-                // This is a simplified version - actual implementation would parse the array
-                prices.put("current", 0.0);
+                // TODO: Implement full historical price parsing
+                // For now, this is a placeholder for future enhancement
+                // Full implementation would:
+                // 1. Parse the prices array
+                // 2. Map timestamps to prices
+                // 3. Return a map of timestamp -> price
+                // Example: prices.put("1234567890", 0.05);
             }
         } catch (Exception e) {
             Log.e(TAG, "Error parsing historical price response", e);

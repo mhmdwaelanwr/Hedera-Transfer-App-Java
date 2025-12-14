@@ -72,8 +72,13 @@ public class PriceAlertService {
         List<PriceAlert> alerts = getPriceAlerts(context);
         List<PriceAlert> triggeredAlerts = new ArrayList<>();
         
+        if (fiatCurrency == null) {
+            return triggeredAlerts;
+        }
+        
         for (PriceAlert alert : alerts) {
-            if (alert.isActive() && alert.getFiatCurrency().equals(fiatCurrency)) {
+            if (alert.isActive() && alert.getFiatCurrency() != null && 
+                alert.getFiatCurrency().equalsIgnoreCase(fiatCurrency)) {
                 boolean triggered = false;
                 if ("ABOVE".equals(alert.getDirection()) && currentPrice >= alert.getTargetPrice()) {
                     triggered = true;

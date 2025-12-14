@@ -158,7 +158,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:fontFamily="@font/segoe_ui_regular"
-            android:text="Don\'t have an account? " />
+            android:text="Don't have an account? " />
 
         <TextView
             android:id="@+id/register_now"

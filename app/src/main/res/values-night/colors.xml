@@ -12,4 +12,5 @@
     <color name="colorSurface">#FF121212</color>
     <color name="colorOnSurface">#FFFFFFFF</color>
     <color name="yellow">#FFEB3B</color>
+    <color name="mlsa_egypt_clubs_color">@android:color/holo_blue_light</color>
 </resources>

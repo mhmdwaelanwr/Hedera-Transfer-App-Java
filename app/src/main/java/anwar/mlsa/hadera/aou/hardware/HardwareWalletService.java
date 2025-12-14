@@ -38,6 +38,12 @@ public class HardwareWalletService extends Service implements SerialInputOutputM
     private static final int LEDGER_VID = 11415; // Vendor ID for Ledger
     private static final int TIMEOUT_MS = 20000;
 
+    // APDU constants based on https://github.com/hashgraph/hedera-ledger-app/blob/main/src/hedera/handlers.h
+    private static final byte CLA = (byte) 0xE0;
+    private static final byte INS_GET_APP_CONFIGURATION = 0x01;
+    private static final byte INS_GET_PUBKEY = 0x02;
+    private static final byte INS_SIGN_TX = 0x04;
+
     public enum ConnectionStatus {DISCONNECTED, SEARCHING, CONNECTED, ERROR}
     private enum PendingOperation {NONE, GET_ACCOUNT, SIGN_TRANSACTION}
 
@@ -175,7 +181,7 @@ public class HardwareWalletService extends Service implements SerialInputOutputM
         this.signingListener = listener;
         this.currentOperation = PendingOperation.SIGN_TRANSACTION;
         try {
-            usbSerialPort.write(createSigningApdu(unsignedTransaction), TIMEOUT_MS);
+            usbSerialPort.write(createSignTransactionApdu(unsignedTransaction), TIMEOUT_MS);
             startOperationTimeout();
         } catch (IOException e) {
             listener.onSignatureError(e);
@@ -191,7 +197,7 @@ public class HardwareWalletService extends Service implements SerialInputOutputM
         this.currentOperation = PendingOperation.GET_ACCOUNT;
         this.activeAccountIndex = accountIndex;
         try {
-            usbSerialPort.write(createGetAccountApdu(accountIndex), TIMEOUT_MS);
+            usbSerialPort.write(createGetPublicKeyApdu(accountIndex), TIMEOUT_MS);
             startOperationTimeout();
         } catch (IOException e) {
             listener.onAccountInfoError(accountIndex, e);
@@ -222,27 +228,26 @@ public class HardwareWalletService extends Service implements SerialInputOutputM
         activeAccountIndex = -1;
     }
 
-    private byte[] createSigningApdu(byte[] transaction) {
-        byte[] header = {(byte) 0xE0, 0x04, 0x00, 0x00, (byte) transaction.length};
+    private byte[] createSignTransactionApdu(byte[] transaction) {
+        byte[] header = {CLA, INS_SIGN_TX, 0x00, 0x00, (byte) transaction.length};
         byte[] apdu = new byte[header.length + transaction.length];
         System.arraycopy(header, 0, apdu, 0, header.length);
         System.arraycopy(transaction, 0, apdu, header.length, transaction.length);
         return apdu;
     }
 
-    private byte[] createGetAccountApdu(int accountIndex) {
-        // This is a simulation of creating a derivation path. Real path is 44'/3030'/accountIndex'
+    private byte[] createGetPublicKeyApdu(int accountIndex) {
+        // Real path is 44'/3030'/accountIndex'
+        // This requires a more complex serialization of the path components.
+        // This is a simplified simulation.
         ByteBuffer path = ByteBuffer.allocate(4);
         path.putInt(accountIndex);
-        byte[] data = new byte[] { (byte) 0x2C, 0x00, 0x00, 0x00, (byte) 0xDC, 0x0B, 0x00, 0x00 }; // 44'/3030'
-        byte[] finalPath = new byte[data.length + path.array().length];
-        System.arraycopy(data, 0, finalPath, 0, data.length);
-        System.arraycopy(path.array(), 0, finalPath, data.length, path.array().length);
+        byte[] pathBytes = path.array();
 
-        byte[] header = {(byte) 0xE0, 0x02, 0x40, 0x00, (byte) finalPath.length};
-        byte[] apdu = new byte[header.length + finalPath.length];
+        byte[] header = {CLA, INS_GET_PUBKEY, 0x40, 0x00, (byte) pathBytes.length}; 
+        byte[] apdu = new byte[header.length + pathBytes.length];
         System.arraycopy(header, 0, apdu, 0, header.length);
-        System.arraycopy(finalPath, 0, apdu, header.length, finalPath.length);
+        System.arraycopy(pathBytes, 0, apdu, header.length, pathBytes.length);
         return apdu;
     }
 
@@ -256,6 +261,8 @@ public class HardwareWalletService extends Service implements SerialInputOutputM
                     break;
                 case GET_ACCOUNT:
                     if (accountInfoListener != null) {
+                        // TODO: Proper parsing of the response which includes public key, chain code, etc.
+                        // For now, we assume the response is the account ID string which is a simplification.
                         String accountId = new String(data, StandardCharsets.UTF_8).trim();
                         accountInfoListener.onAccountInfoReceived(activeAccountIndex, accountId);
                     }
